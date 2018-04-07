@@ -19,8 +19,9 @@
 #include <sstream>
 #include <vector>
 
-#include "atmcd32d.h"
-
+// Struct defs and macros
+// and a few helper functions
+#include "krbcam_helpers.hpp"
 
 #define ID_KINTIME_EDIT			0x01
 #define ID_EXP_EDIT 			0x02
@@ -40,8 +41,7 @@
 
 #define ID_ACQ_TIMER			0x10
 
-#define KRbCAM_FILENAME_BASE	L"iXon_img"
-
+#define KRBCAM_DEFAULT_SAVEPATH	L"C:\\Users\\KRbG2\\Desktop\\Kyle"
 
 struct window_layout_values_t {
 	int originX;
@@ -73,63 +73,43 @@ HFONT hWindowFont = CreateFont(
 						);
 
 
-struct config_form_input_t {
-	float expTime; // Exposure time
-	int xOffset; // X offset of ROI in px
-	int yOffset; // Y offset of ROI in px
-	int width; // Width of ROI in px
-	int height; // Height of ROI in px
-	BOOL binning;
-	BOOL emEnable; // EM gain enabled?
-	int emGain; // EM gain value
-	std::wstring folderPath;
-	int fileNumber;
-};
-
-extern config_form_input_t config_form_input_data;
-
-
-// Following externs are defined in KRbCAM.cpp
+// Following externs are defined in KRBCAM.cpp
 // Handles to child windows
-extern HWND 	hAcqStatic,
-				hAcqDisplay,
-				hExpStatic,
-				hExpEdit,
-				hRoiXStatic,
-				hRoiXEdit,
-				hRoiYStatic,
-				hRoiYEdit,
-				hRoiWidthStatic,
-				hRoiWidthEdit,
-				hRoiHeightStatic,
-				hRoiHeightEdit,
-				hBinningStatic,
-				hBinningButton,
-				hTriggerStatic,
-				hTriggerDisplay,
-				hEmEnableStatic,
-				hEmEnableButton,
-				hEmGainStatic,
-				hEmGainEdit,
-				hSavePathStatic,
-				hSavePathEdit,
-				hFileNumberStatic,
-				hFileNumberEdit,
-				hStatusLabelStatic,
-				hStatusLogEdit,
-				hGoButton,
-				hStopButton,
-				hCoolerLabelStatic,
-				hCoolerStatusStatic,
-				hTempLabelStatic,
-				hTempStatusStatic,
-				hCoolerGroupBox,
-				hCoolerEnableButton,
-				hCoolerDisableButton;
-
-extern std::vector<HWND> handlesVector;
-
-
+extern HWND 			hAcqStatic,
+						hAcqDisplay,
+						hExpStatic,
+						hExpEdit,
+						hRoiXStatic,
+						hRoiXEdit,
+						hRoiYStatic,
+						hRoiYEdit,
+						hRoiWidthStatic,
+						hRoiWidthEdit,
+						hRoiHeightStatic,
+						hRoiHeightEdit,
+						hBinningStatic,
+						hBinningButton,
+						hTriggerStatic,
+						hTriggerDisplay,
+						hEmEnableStatic,
+						hEmEnableButton,
+						hEmGainStatic,
+						hEmGainEdit,
+						hSavePathStatic,
+						hSavePathEdit,
+						hFileNumberStatic,
+						hFileNumberEdit,
+						hStatusLabelStatic,
+						hStatusLogEdit,
+						hGoButton,
+						hStopButton,
+						hCoolerLabelStatic,
+						hCoolerStatusStatic,
+						hTempLabelStatic,
+						hTempStatusStatic,
+						hCoolerGroupBox,
+						hCoolerEnableButton,
+						hCoolerDisableButton;
 
 BOOL CreateWindows(HINSTANCE hInstance, HWND hParent);
 BOOL SetDefaultValues(void);
@@ -139,6 +119,9 @@ void appendToEditControl(HWND handle, LPCWSTR str);
 void GetConfigFormData(config_form_input_t* out);
 void SetConfigFormData(config_form_input_t data);
 
+
+// Vector of handles to all child windows
+std::vector<HWND> handlesVector;
 
 /*
 * Create Windows.
@@ -486,7 +469,7 @@ BOOL SetDefaultValues(void) {
 		Edit_SetText(hRoiYEdit, L"0");
 		Edit_SetText(hRoiWidthEdit, L"500");
 		Edit_SetText(hRoiHeightEdit, L"500");
-		Edit_SetText(hSavePathEdit, L"C:\\Users\\KRbG2\\Desktop\\Kyle");
+		Edit_SetText(hSavePathEdit, KRBCAM_DEFAULT_SAVEPATH);
 
 		MessageBox(GetActiveWindow(), L"Couldn't open default_config.txt. Loading dummy values...", L"Warning", MB_OK);
 	}
@@ -542,13 +525,13 @@ BOOL SetDefaultValues(void) {
 	}
 	else {
 		std::wstring wstr = buffer;
-		wstr += KRbCAM_FILENAME_BASE + std::wstring(L"*");
+		wstr += KRBCAM_FILENAME_BASE + std::wstring(L"*");
 		HANDLE fileHandle;
 		WIN32_FIND_DATA fileData;
 
 		fileHandle = FindFirstFile(wstr.c_str(), &fileData);
 		std::wstring temp(L"");
-		int l1 = std::wstring(KRbCAM_FILENAME_BASE).length();
+		int l1 = std::wstring(KRBCAM_FILENAME_BASE).length();
 		int index = 0;
 		while (FindNextFile(fileHandle, &fileData)) {
 			temp = fileData.cFileName;

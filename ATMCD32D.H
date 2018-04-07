@@ -130,7 +130,7 @@ typedef struct WHITEBALANCEINFO
 	int iROI_bottom;
 	int iOperation;
 } WhiteBalanceInfo;
-	
+
 unsigned int WINAPI AbortAcquisition(void);
 unsigned int WINAPI CancelWait(void);
 unsigned int WINAPI CoolerOFF(void);

@@ -1,8 +1,8 @@
 clear all
-filename = 'iXon_img32a.csv';
+filename = 'iXon_img19b.csv';
 
 oldpath = path;
-path(oldpath, 'C:\Users\KRbG2\Desktop\Kyle\andor\data\20180405');
+path(oldpath, 'C:\Users\KRbG2\Desktop\Kyle\andor\data\20180406');
 
 img = csvread(filename);
 

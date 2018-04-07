@@ -8,56 +8,18 @@
 #include <windows.h>
 #include <windowsx.h>
 
-#include <cstring>
 #include <cmath>
-#include <cwchar>
 
-#include <fstream>
 #include <string>
-#include <iostream>
 #include <sstream>
-#include <vector>
-#include <algorithm>
 
+// Andor library
 #include "atmcd32d.h"
 
-// Layout and setup functions
-#include "krbcam_layout.hpp"
-
-
-#define KRbCAM_ACQ_MODE 				4 // 2 for accumulate (use this for frame transfer), 4 for fast kinetics
-#define KRbCAM_FT 						TRUE
-#define KRbCAM_READ_MODE 				4 // 4 for image
-#define KRbCAM_USE_INTERNAL_SHUTTER 	FALSE // controls whether the internal shutter is used.
-#define KRbCAM_TRIGGER_MODE 			0 // 1 for External Trigger Mode; 0 for Internal mode
-#define KRbCAM_EM_MODE 				0 // 0 is normal EM mode
-#define KRbCAM_EXPOSED_ROWS 			512 // Number of exposed rows for kinetics imaging
-#define KRbCAM_FK_SERIES_LENGTH 		2 // number of shots in fast kinetics series
-#define KRbCAM_OD_SERIES_LENGTH		3 // number of fast kinetics series to obtain an OD image
-#define	KRbCAM_FK_BINNING_MODE 		4 // 4 for image mode
-#define KRbCAM_N_ACC					1 // Number of accumulations: 1
-
-#define KRbCAM_BIN_SIZE				2 // binning is 2x2
-#define KRbCAM_TIMER					100 // ms for acquisition loop
-
-#define KRbCAM_LOOP_ACQ				FALSE // Loop acquisitions?
-
-#ifndef KRbCAM_FILENAME_BASE
-#define KRbCAM_FILENAME_BASE			L"iXon_img"
-#endif
+// Struct defs, macros, and a few helper functions:
+#include "krbcam_helpers.hpp"
 
 using namespace std;
-
-
-// Struct for holding other Andor information
-struct camInfo_t {
-	char model[32]; // Head model number
-	int detDim[2]; // {x, y} dimensions in pixels
-	BOOL internalShutter;
-	int shutterMinT[2]; // {closing time, opening time}
-	int emGainRange[2]; // {emLow, emHigh}
-};
-
 
 class iXonClass {
 protected:
@@ -81,22 +43,19 @@ public:
 	}
 
 	~iXonClass() {
-		int status = GetStatus(&status);
-		if (status == DRV_ACQUIRING) {
-			int errorVal = AbortAcquisition();
-			if (errorVal != DRV_SUCCESS)
-				MessageBox(GetActiveWindow(), L"Error aborting acquisition while closing.", L"Warning.", MB_OK);
-			else
-				MessageBox(GetActiveWindow(), L"Successfully aborted acquisition while closing.", L"Exit message.", MB_OK);
-		}
-		int errorVal = SetShutter(1, 2, 0, 0);
-		if (errorVal != DRV_SUCCESS)
-			MessageBox(GetActiveWindow(), L"Error closing shutter while exiting.", L"Warning.", MB_OK);
+		errorMsg = L"";
 
-		if (ShutDown() == DRV_SUCCESS)
-			MessageBox(GetActiveWindow(), L"Shut down successfully.", L"Exit message.", MB_OK);
-		else
-			MessageBox(GetActiveWindow(), L"There was an error shutting down.", L"Exit message.", MB_OK);
+		int status;
+		iXonClass::GetStatus(&status);
+
+		if (status == DRV_ACQUIRING)
+			iXonClass::AbortAcquisition(L"Error aborting acquisition while closing.\n");
+
+		int errorVal = ::SetShutter(1, 2, 0, 0);
+		handleErrors(errorVal, errorMsg, L"SetShutter error while closing.\n", L"", FALSE, TRUE);
+
+		errorVal = ::ShutDown();
+		handleErrors(errorVal, errorMsg, L"There was an error shutting down.\n", L"", FALSE, TRUE);
 	}	
 
 	int iXonInit(void) {
@@ -109,12 +68,12 @@ public:
 		wchar_t buffer[256];
 		GetCurrentDirectory(256, buffer);
 
-		_Initialize(buffer);
-		_GetCapabilities(&caps);
-		_GetHeadModel(camInfo.model);
-		_GetDetector(&camInfo.detDim[0], &camInfo.detDim[1]);
-		_GetShutterAvailable(&camInfo.internalShutter);
-		_GetShutterMinTimes(&camInfo.shutterMinT[0], &camInfo.shutterMinT[1]);
+		iXonClass::Initialize(buffer);
+		iXonClass::GetCapabilities(&caps);
+		iXonClass::GetHeadModel(camInfo.model);
+		iXonClass::GetDetector(&camInfo.detDim[0], &camInfo.detDim[1]);
+		iXonClass::GetShutterAvailable(&camInfo.internalShutter);
+		iXonClass::GetShutterMinTimes(&camInfo.shutterMinT[0], &camInfo.shutterMinT[1]);
 		
 		if (errorFlag) {
 			MessageBox(GetActiveWindow(), errorMsg.c_str(), L"Error.", MB_OK);
@@ -133,18 +92,34 @@ public:
 		return 0;
 	}
 
-	int _Initialize(LPCWSTR path) {
-		int errorVal = Initialize((char*)path);
+	wstring GetErrorMessage(void) {
+		return errorMsg;
+	}
+
+	int iXonClass::AbortAcquisition(const wchar_t* msg = L"AbortAcquisition error: ") {
+		int errorVal = ::AbortAcquisition();
+		errorMsg = handleErrors(errorVal, errorMsg, msg, L"Acquisition aborted.", TRUE, TRUE);
+		return errorVal;
+	}
+
+	int iXonClass::GetStatus(int* status) {
+		int errorVal = ::GetStatus(status);
+		errorMsg = handleErrors(errorVal, errorMsg, L"GetStatus error: ", L"", FALSE, TRUE);
+		return errorVal;
+	}
+
+	int iXonClass::Initialize(LPCWSTR path) {
+		int errorVal = ::Initialize((char*)path);
 		errorMsg = handleErrors(errorVal, errorMsg, L"Init. error: ", L"SDK initialized.\n", TRUE);
 		return errorVal;
 	}
-	int _GetCapabilities(AndorCapabilities* capsOut) {
+	int iXonClass::GetCapabilities(AndorCapabilities* capsOut) {
 		capsOut->ulSize = sizeof(AndorCapabilities);
-		int errorVal = GetCapabilities(capsOut);
+		int errorVal = ::GetCapabilities(capsOut);
 		errorMsg = handleErrors(errorVal, errorMsg, L"GetCapabilities error: ", L"", FALSE);
 		return errorVal;
 	}
-	void _PrintCameraType(BOOL printFlag) {
+	void iXonClass::PrintCameraType(BOOL printFlag) {
 		if (printFlag) {
 			switch (caps.ulCameraType) {
 				case (AC_CAMERATYPE_IXONULTRA):
@@ -159,32 +134,36 @@ public:
 			}
 		}
 	}
-	int _GetHeadModel(char* model) {
+	int iXonClass::GetHeadModel(char* model) {
 		wostringstream ss;
-		int errorVal = GetHeadModel(model);
+		int errorVal = ::GetHeadModel(model);
 		ss << "Head model is " << camInfo.model << ".\n";
 		handleErrors(errorVal, errorMsg, L"GetHeadModel error: ", ss.str().c_str(), flagVerbose);
 		return errorVal;
 	}
-	int _GetDetector(int* dimX, int* dimY) {
-		int errorVal = GetDetector(dimX, dimY);
-		std::wostringstream ss;
+	int iXonClass::GetDetector(int* dimX, int* dimY) {
+		*dimX = 0; *dimY = 0;
+
+		int errorVal = ::GetDetector(dimX, dimY);
+		wostringstream ss;
 	  	ss << "Array is " << *dimX << " x " << *dimY << " pixels.\n";
 	 	handleErrors(errorVal, errorMsg, L"GetDetector error: ", ss.str().c_str(), flagVerbose);
 	 	return errorVal;
 	}
-	int _GetNumberVSSpeeds(int* num) {
-		int errorVal = GetNumberVSSpeeds(num);
-		std::wostringstream ss;
+	int iXonClass::GetNumberVSSpeeds(int* num) {
+		*num = 0;
+
+		int errorVal = ::GetNumberVSSpeeds(num);
+		wostringstream ss;
 	  	ss << "Number of vertical shift speeds: " << *num << ".\n";
-	 	std::wstring wstr = ss.str();
+	 	wstring wstr = ss.str();
 	    handleErrors(errorVal, errorMsg, L"GetNumberVSSpeeds error: ", ss.str().c_str(), flagVerbose);
 	    return errorVal;
 	}
 
-	int _GetShutterAvailable(BOOL* internalShutter) {
+	int iXonClass::GetShutterAvailable(BOOL* internalShutter) {
 		int shutter = 0;
-		int errorVal = IsInternalMechanicalShutter(&shutter);
+		int errorVal = ::IsInternalMechanicalShutter(&shutter);
 		handleErrors(errorVal, errorMsg, L"IsInternalMechanicalShutter error: ",
 					(shutter == 0 ? L"No internal shutter.\n" : L"Has internal shutter.\n"), flagVerbose);
 		if (shutter != 0)
@@ -194,26 +173,28 @@ public:
 		return errorVal;
 	}
 
-	int _GetShutterMinTimes(int* closing, int* opening) {
-		int errorVal = GetShutterMinTimes(closing, opening);
-		std::wostringstream ss;
+	int iXonClass::GetShutterMinTimes(int* closing, int* opening) {
+		*closing = 0; *opening = 0;
+
+		int errorVal = ::GetShutterMinTimes(closing, opening);
+		wostringstream ss;
 		ss << "Minimum shutter closing (opening) time: " << *closing << " (" << *opening << ") ms.\n";
 		handleErrors(errorVal, errorMsg, L"GetShutterMinTimes error :", ss.str().c_str(), flagVerbose);
 		return errorVal;
 	}
 
-	int _SetShutter(BOOL useShutter, int closing, int opening) {
+	int iXonClass::SetShutter(BOOL useShutter, int closing, int opening) {
 		int mode = (useShutter ? 0 : 1);
 
 		wostringstream ss;
 		ss << "Internal shutter closing (opening) time set to " << closing << " (" << opening << ") ms.\n";
 
-		int errorVal = SetShutter(1, mode, closing, opening);
+		int errorVal = ::SetShutter(1, mode, closing, opening);
 		handleErrors(errorVal, errorMsg, L"SetShutter error: ",
 					(useShutter ? ss.str().c_str() : L"Internal shutter set to always open.\n"), flagVerbose);
 		return errorVal;
 	}
-	int _SetTriggerMode(int mode) {
+	int iXonClass::SetTriggerMode(int mode) {
 		wstring w(L"");
 		switch (mode) {
 			case 0:
@@ -227,11 +208,11 @@ public:
 				break;
 		}
 
-		int errorVal = SetTriggerMode(mode);
+		int errorVal = ::SetTriggerMode(mode);
 		handleErrors(errorVal, errorMsg, L"SetTriggerMode error: ", w.c_str(), flagVerbose);
 		return errorVal;
 	}
-	int _SetEMGainMode(int mode) {
+	int iXonClass::SetEMGainMode(int mode) {
 		wstring w(L"");
 		switch (mode) {
 			case 0:
@@ -248,26 +229,28 @@ public:
 				break;
 		}
 
-		int errorVal = SetEMGainMode(mode);
+		int errorVal = ::SetEMGainMode(mode);
 		handleErrors(errorVal, errorMsg, L"SetEMGainMode error: ", w.c_str(), flagVerbose);
 		return errorVal;
 	}
-	int _GetEMGainRange(int* low, int* high) {
-		int errorVal = GetEMGainRange(low, high);
+	int iXonClass::GetEMGainRange(int* low, int* high) {
+		*low = 0; *high = 0;
+
+		int errorVal = ::GetEMGainRange(low, high);
 		wostringstream ss;
 		ss << "EM gain range is " << *low << " to " << *high << ".\n";
 		handleErrors(errorVal, errorMsg, L"GetEMGainRange error: ", ss.str().c_str(), TRUE);
 		return errorVal;
 	}
-	int _SetEMCCDGain(int gain) {
-		int errorVal = SetEMCCDGain(gain);
+	int iXonClass::SetEMCCDGain(int gain) {
+		int errorVal = ::SetEMCCDGain(gain);
 		wostringstream ss;
 		ss << L"EM Gain set to " << gain << L".\n";
 		handleErrors(errorVal, errorMsg, L"SetEMCCDGain error: ", ss.str().c_str(), TRUE);
 		return errorVal;
 	}
 
-	int _SetAcquisitionMode(int mode) {
+	int iXonClass::SetAcquisitionMode(int mode) {
 		wstring w(L"");
 		switch (mode) {
 			case 1:
@@ -288,12 +271,12 @@ public:
 		}
 		w = L"Acquisition mode set to " + w;
 
-		int errorVal = SetAcquisitionMode(mode);
+		int errorVal = ::SetAcquisitionMode(mode);
 		handleErrors(errorVal, errorMsg, L"SetAcquisitionMode error: ", w.c_str(), TRUE);
 		return errorVal;
 	}
 
-	int _SetReadMode(int mode) {
+	int iXonClass::SetReadMode(int mode) {
 		wstring w(L"");
 		switch (mode) {
 			case 0:
@@ -313,30 +296,30 @@ public:
     			break;
 		}
 		w = L"Read mode set to " + w;
-		int errorVal = SetReadMode(mode);
+		int errorVal = ::SetReadMode(mode);
 		handleErrors(errorVal, errorMsg, L"SetReadMode error: ", w.c_str(), TRUE);
 		return errorVal;
 	}
 
 	// height in physical pixels, exposure in ms
-	int _SetupFastKinetics(int height, int series_length, float exposure, int binning, int y_offset) {
+	int iXonClass::SetupFastKinetics(int height, int series_length, float exposure, int binning, int y_offset) {
 		exposure *= pow(10.0, -3.0);
 
-		int errorVal = SetFastKineticsEx(height, series_length, exposure, 4, binning, binning, y_offset);
+		int errorVal = ::SetFastKineticsEx(height, series_length, exposure, 4, binning, binning, y_offset);
 		handleErrors(errorVal, errorMsg, L"SetFastKineticsEx error: ", L"Fast kinetics set.\n", flagVerbose);
 		return errorVal;
 	}
 
-	int _GetFKExposureTime(float* time) {
+	int iXonClass::GetFKExposureTime(float* time) {
 		*time = 0;
-		int errorVal = GetFKExposureTime(time);
+		int errorVal = ::GetFKExposureTime(time);
 		wostringstream ss;
 		ss << "Real Fast Kinetics exposure time is " << (*time) * pow(10.0, 3.0) << " ms.\n";
 		handleErrors(errorVal, errorMsg, L"GetFKExposureTime error: ", ss.str().c_str(), TRUE);
 		return errorVal;
 	}
 
-	int _SetFastKineticsStorageMode(int mode) {
+	int iXonClass::SetFastKineticsStorageMode(int mode) {
 		wstring w(L"");
 		switch (mode) {
 			case 0:
@@ -346,12 +329,12 @@ public:
 				w = L"Binning in storage area.\n";
 				break;
 		}
-		int errorVal = SetFastKineticsStorageMode(mode);
+		int errorVal = ::SetFastKineticsStorageMode(mode);
 		handleErrors(errorVal, errorMsg, L"SetFastKineticsStorageMode error: ", w.c_str(), flagVerbose);
 		return errorVal;
 	}
 
-	int _SetFastKineticsTimeScanMode(int exposedRows, int seriesLength, int mode) {
+	int iXonClass::SetFastKineticsTimeScanMode(int exposedRows, int seriesLength, int mode) {
 		wstring w(L"");
 		switch (mode) {
 			case 0:
@@ -365,17 +348,17 @@ public:
 				break;
 		}
 
-		int errorVal = SetFastKineticsTimeScanMode(exposedRows, seriesLength, mode);
+		int errorVal = ::SetFastKineticsTimeScanMode(exposedRows, seriesLength, mode);
 		handleErrors(errorVal, errorMsg, L"SetFastKineticsTimeScanMode error: ", w.c_str(), flagVerbose);
 		return errorVal;
 	}
 
-	int _GetAcquisitionTimings(float* expTime, float* accTime, float* kinTime) {
+	int iXonClass::GetAcquisitionTimings(float* expTime, float* accTime, float* kinTime) {
 		*expTime = 0;
 		*accTime = 0;
 		*kinTime = 0;
 
-		int errorVal = GetAcquisitionTimings(expTime, accTime, kinTime);
+		int errorVal = ::GetAcquisitionTimings(expTime, accTime, kinTime);
 		wostringstream ss;
 		ss << "Real (exp., acc., kin.) times are ("
 			<< (*expTime) * pow(10.0, 3.0) << ", "
@@ -386,9 +369,9 @@ public:
 		return errorVal;
 	}
 
-	int _GetReadoutTime(float* readout) {
+	int iXonClass::GetReadoutTime(float* readout) {
 		*readout = 0;
-		int errorVal = GetReadOutTime(readout);
+		int errorVal = ::GetReadOutTime(readout);
 
 		wostringstream ss;
 		ss << "Readout time is " << (*readout) * pow(10.0, 3.0) << " ms.\n";
@@ -396,31 +379,31 @@ public:
 		return errorVal;
 	}
 
-	int _StartAcquisition(void) {
-		int errorVal = StartAcquisition();
-		handleErrors(errorVal, errorMsg, L"StartAcquisition error: ", L"Acquiring\n", TRUE);
+	int iXonClass::StartAcquisition(void) {
+		int errorVal = ::StartAcquisition();
+		handleErrors(errorVal, errorMsg, L"StartAcquisition error: ", L"Acquiring...\n", TRUE, TRUE);
 		return errorVal;
 	}
 
-	int _GetNumberAvailableImages(long* index1, long* index2) {
+	int iXonClass::GetNumberAvailableImages(long* index1, long* index2) {
 		*index1 = 0;
 		*index2 = 0;
-		int errorVal = GetNumberAvailableImages(index1, index2);
-		std::wostringstream ss;
+		int errorVal = ::GetNumberAvailableImages(index1, index2);
+		wostringstream ss;
 		ss << "Available images are " << *index1 << " to " << *index2 << ".\n";
 		handleErrors(errorVal, errorMsg, L"GetNumberAvailableImages error: ", ss.str().c_str(), flagVerbose);
 		return errorVal;
 	}
 
-	int _GetImages(long index1, long index2, long* buffer, long data_length) {
+	int iXonClass::GetImages(long index1, long index2, long* buffer, long data_length) {
 		long valInd1, valInd2;
-		int errorVal = GetImages(index1, index2, buffer, data_length, &valInd1, &valInd2);
+		int errorVal = ::GetImages(index1, index2, buffer, data_length, &valInd1, &valInd2);
 		handleErrors(errorVal, errorMsg, L"GetImages error: ", L"Readout complete!\n", TRUE);
 		return errorVal;
 	}
 
 
-	int StartCooler(void) {
+	int iXonClass::StartCooler(void) {
 		return 0;
 	}
 
@@ -428,8 +411,8 @@ public:
 
 
 protected:
-	wstring handleErrors(int errorCode, wstring msg, const wchar_t* errorIdentifier, LPCWSTR successMsg, BOOL printFlag) {
-		std::wstring msg2(errorIdentifier);
+	wstring handleErrors(int errorCode, wstring msg, const wchar_t* errorIdentifier, LPCWSTR successMsg, BOOL printFlag, BOOL throwMB = FALSE) {
+		wstring msg2(errorIdentifier);
 
 		switch (errorCode) {
 			case DRV_SUCCESS: {
@@ -487,6 +470,9 @@ protected:
 				break;
 		}
 		errorFlag = TRUE;
+
+		if (throwMB)
+			MessageBox(GetActiveWindow(), msg.c_str(), L"Error!", MB_OK);
 		return msg;
 	}		
 
@@ -501,12 +487,12 @@ public:
 		errorFlag = FALSE;
 		errorMsg = L"";
 
-		iXonClass::_SetAcquisitionMode(KRbCAM_ACQ_MODE);
-		iXonClass::_SetReadMode(KRbCAM_READ_MODE);
-		iXonClass::_SetShutter(KRbCAM_USE_INTERNAL_SHUTTER, camInfo.shutterMinT[0], camInfo.shutterMinT[1]);
-		iXonClass::_SetTriggerMode(KRbCAM_TRIGGER_MODE);
-		iXonClass::_SetEMGainMode(KRbCAM_EM_MODE);
-		iXonClass::_GetEMGainRange(&camInfo.emGainRange[0], &camInfo.emGainRange[1]);
+		iXonClass::SetAcquisitionMode(KRBCAM_ACQ_MODE);
+		iXonClass::SetReadMode(KRBCAM_READ_MODE);
+		iXonClass::SetShutter(KRBCAM_USE_INTERNAL_SHUTTER, camInfo.shutterMinT[0], camInfo.shutterMinT[1]);
+		iXonClass::SetTriggerMode(KRBCAM_TRIGGER_MODE);
+		iXonClass::SetEMGainMode(KRBCAM_EM_MODE);
+		iXonClass::GetEMGainRange(&camInfo.emGainRange[0], &camInfo.emGainRange[1]);
 
 		if (errorFlag) {
 			MessageBox(GetActiveWindow(), errorMsg.c_str(), L"Error.", MB_OK);
@@ -520,19 +506,19 @@ public:
 		errorFlag = FALSE;
 		errorMsg = L"";
 
-		iXonClass::_SetEMCCDGain(config.emGain);
-		iXonClass::_SetupFastKinetics(config.height, KRbCAM_FK_SERIES_LENGTH, config.expTime, config.binning ? KRbCAM_BIN_SIZE : 1, config.yOffset);
-		iXonClass::_SetFastKineticsStorageMode(0);
-		iXonClass::_SetFastKineticsTimeScanMode(0, 0, 0);
+		iXonClass::SetEMCCDGain(config.emGain);
+		iXonClass::SetupFastKinetics(config.height, KRBCAM_FK_SERIES_LENGTH, config.expTime, config.binning ? KRBCAM_BIN_SIZE : 1, config.yOffset);
+		iXonClass::SetFastKineticsStorageMode(0);
+		iXonClass::SetFastKineticsTimeScanMode(0, 0, 0);
 
 		float realExp;
-		iXonClass::_GetFKExposureTime(&realExp);
+		iXonClass::GetFKExposureTime(&realExp);
 
 		float realAcc, realKin;
-		iXonClass::_GetAcquisitionTimings(&realExp, &realAcc, &realKin);
+		iXonClass::GetAcquisitionTimings(&realExp, &realAcc, &realKin);
 
 		float readout;
-		iXonClass::_GetReadoutTime(&readout);
+		iXonClass::GetReadoutTime(&readout);
 
 		if (errorFlag) {
 			MessageBox(GetActiveWindow(), errorMsg.c_str(), L"Error.", MB_OK);

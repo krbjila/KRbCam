@@ -24,30 +24,6 @@
 #include "krbcam_helpers.hpp"
 
 
-#define KRbCAM_ACQ_MODE 				4 // 2 for accumulate (use this for frame transfer), 4 for fast kinetics
-#define KRbCAM_FT 						TRUE
-#define KRbCAM_READ_MODE 				4 // 4 for image
-#define KRbCAM_USE_INTERNAL_SHUTTER 	FALSE // controls whether the internal shutter is used.
-#define KRbCAM_TRIGGER_MODE 			0 // 1 for External Trigger Mode; 0 for Internal mode
-#define KRbCAM_EM_MODE 					0 // 0 is normal EM mode
-#define KRbCAM_EXPOSED_ROWS 			512 // Number of exposed rows for kinetics imaging
-#define KRbCAM_FK_SERIES_LENGTH 		2 // number of shots in fast kinetics series
-#define KRbCAM_OD_SERIES_LENGTH			3 // number of fast kinetics series to obtain an OD image
-#define	KRbCAM_FK_BINNING_MODE 			4 // 4 for image mode
-#define KRbCAM_N_ACC					1 // Number of accumulations: 1
-
-#define KRbCAM_TIMER					100 // ms for acquisition loop
-
-#define KRbCAM_LOOP_ACQ					FALSE // Loop acquisitions?
-
-#ifndef KRbCAM_FILENAME_BASE
-#define KRbCAM_FILENAME_BASE			L"iXon_img"
-#endif
-
-// #define KRbCAM_STATUS_IDLE				0 // Idle
-// #define KRbCAM_STATUS_ACQ				1 // Acquiring
-
-
 // Handles to child windows
 HWND 	hAcqStatic,
 		hAcqDisplay,
@@ -87,8 +63,6 @@ HWND 	hAcqStatic,
 		hCoolerEnableButton,
 		hCoolerDisableButton;
 
-std::vector<HWND> handlesVector;
-
 AndorCapabilities caps;
 
 config_form_input_t gConfig;
@@ -117,6 +91,9 @@ int exitGracefully(void);
 int getImageData(void);
 int saveArray(long* pImage, int data_length, int num_frames, int width, int height);
 
+int processButtons(int ID);
+int processTimers(int ID);
+
 
 BOOL _CreateWindows(HINSTANCE hInstance, HWND hParent) {
 	return CreateWindows(hInstance, hParent);
@@ -136,24 +113,28 @@ int SetupAcquisition(void) {
 	GetConfigFormData(&gConfig);
    	ValidateConfigValues(&gConfig, camInfo);
    	SetConfigFormData(gConfig);
-   	
-	if (AndorCamera.iXonSetupAcquisition(gConfig) == 0) {
-   		if (AndorCamera._StartAcquisition() == DRV_SUCCESS) {
-   			gFlagAcquiring = TRUE;
-	 		SetTimer(gHandleMain, ID_ACQ_TIMER, KRbCAM_TIMER, NULL);
-   		}
-   		else {
-   			gFlagAcquiring = FALSE;
-   			return -1;
-   		}
+
+   	if (AndorCamera.iXonSetupAcquisition(gConfig) != 0) {
+   		MessageBox(GetActiveWindow(), L"iXonSetupAcquisition error.", L"Error.", MB_OK);
+   		return -1;
    	}
+
+	if (AndorCamera.StartAcquisition() == DRV_SUCCESS) {
+		gFlagAcquiring = TRUE;
+ 		SetTimer(gHandleMain, ID_ACQ_TIMER, KRBCAM_TIMER, NULL);
+	}
+	else {
+		gFlagAcquiring = FALSE;
+		return -1;
+	}
+
 	return 0;
 }
 
 
 int getImageData(void) {
 
-	unsigned long dataLength = KRbCAM_FK_SERIES_LENGTH * gConfig.width * gConfig.height;
+	unsigned long dataLength = KRBCAM_FK_SERIES_LENGTH * gConfig.width * gConfig.height;
 	if (gConfig.binning)
 		dataLength /= 4;
 	
@@ -165,11 +146,11 @@ int getImageData(void) {
 
 	long ind1 = 0;
 	long ind2 = 0;
-	AndorCamera._GetNumberAvailableImages(&ind1, &ind2);
-	AndorCamera._GetImages(ind1, ind2, pImageData, dataLength);
+	AndorCamera.GetNumberAvailableImages(&ind1, &ind2);
+	AndorCamera.GetImages(ind1, ind2, pImageData, dataLength);
 
 	if (!AndorCamera.errorFlag) {
-		saveArray(pImageData, dataLength, KRbCAM_FK_SERIES_LENGTH, gConfig.width, gConfig.height);
+		saveArray(pImageData, dataLength, KRBCAM_FK_SERIES_LENGTH, gConfig.width, gConfig.height);
 		return 0;
 	}
 	else
@@ -198,50 +179,7 @@ int HandleMessagesControl(UINT uMsg, WPARAM wParam, LPARAM lParam) {
 				switch (HIWORD(wParam))
 				{
 					case BN_CLICKED:
-						{
-							if (LOWORD(wParam) == ID_EMENABLE_BUTTON) {
-								if (Button_GetCheck(hEmEnableButton) == BST_CHECKED) {
-									Edit_SetText(hEmGainEdit, L"1");
-									Edit_Enable(hEmGainEdit, TRUE);
-								}
-								else {
-									Edit_SetText(hEmGainEdit, L"");
-									Edit_Enable(hEmGainEdit, FALSE);
-								}
-							}
-							else if (LOWORD(wParam) == ID_COOLERENABLE_BUTTON || LOWORD(wParam) == ID_COOLERDISABLE_BUTTON) {
-								// DO SOMETHING FOR COOLING
-							}
-
-							else if (LOWORD(wParam) == ID_GO_BUTTON) {
-								if (!gFlagAcquiring) {
-									int err = 0;
-									err = SetupAcquisition();
-									
-									if (err == 0) {
-										Button_Enable(hStopButton, TRUE);
-										Button_Enable(hGoButton, FALSE);
-									}
-									gCounterODSeries = 0;
-								}
-							}
-							else if (LOWORD(wParam) == ID_STOP_BUTTON) {
-								if (gFlagAcquiring) {
-									Button_Enable(hGoButton, TRUE);
-									Button_Enable(hStopButton, FALSE);
-									KillTimer(gHandleMain, ID_ACQ_TIMER);
-
-									int errorVal = AbortAcquisition();
-									if (errorVal == DRV_SUCCESS)
-										appendToEditControl(hStatusLogEdit, L"Abort successful.\n");
-									else if (errorVal == DRV_IDLE)
-										appendToEditControl(hStatusLogEdit, L"Abort error: system not acquiring.\n");
-
-									gFlagAcquiring = FALSE;
-									gCounterODSeries = 0;
-								}
-							}
-						}
+						processButtons(LOWORD(wParam));
 						return 0;
 					default:
 						return 0;
@@ -250,82 +188,144 @@ int HandleMessagesControl(UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			}
 			return 0;
 		case WM_TIMER:
-			{
-				switch LOWORD(wParam)
-				{
-					case ID_ACQ_TIMER:
-						{
-							int status;
-							int errorVal = GetStatus(&status);
-
-							if (errorVal != DRV_SUCCESS) {
-								KillTimer(GetActiveWindow(), ID_ACQ_TIMER);
-								MessageBox(GetActiveWindow(), L"GetStatus error\n", L"Warning", MB_OK);
-								
-								AbortAcquisition();
-								Button_Enable(hGoButton, TRUE);
-								Button_Enable(hStopButton, FALSE);
-								gFlagAcquiring = FALSE;
-							}
-							else {
-								if (status == DRV_IDLE) {
-									KillTimer(gHandleMain, ID_ACQ_TIMER);
-
-									if (gFlagAcquiring) {
-										
-										gCounterODSeries++;
-										getImageData();
-
-										std::wostringstream wss;
-										wss << L"Acquired " << gCounterODSeries << L" of " << KRbCAM_OD_SERIES_LENGTH << L" in series.\n";
-										appendToEditControl(hStatusLogEdit, wss.str().c_str());
-
-										if (gCounterODSeries < KRbCAM_OD_SERIES_LENGTH) {
-											int errorVal = StartAcquisition();
-											if (errorVal != DRV_SUCCESS) {
-												MessageBox(GetActiveWindow(), L"SetupAcquisition error\n", L"StartAcquisition error.", MB_OK);
-												gFlagAcquiring = FALSE;
-												return -1;
-											}
-											else {
-												gFlagAcquiring = TRUE;
-												SetTimer(gHandleMain, ID_ACQ_TIMER, KRbCAM_TIMER, NULL);
-											}
-										}
-										else {
-											gCounterODSeries = 0;
-											Button_Enable(hGoButton, TRUE);
-											Button_Enable(hStopButton, FALSE);
-											appendToEditControl(hStatusLogEdit, L"Done acquiring.\n");
-											gFlagAcquiring = FALSE;
-										}
-									}
-									else {
-										gCounterODSeries = 0;
-										appendToEditControl(hStatusLogEdit, L"Didn't start acquiring!\n");
-										Button_Enable(hGoButton, TRUE);
-										Button_Enable(hStopButton, FALSE);
-										gFlagAcquiring = FALSE;
-									}
-									
-								}
-								else if (status != DRV_ACQUIRING) {
-									gCounterODSeries = 0;
-									appendToEditControl(hStatusLogEdit, L"Error: not acquiring.\n");
-									Button_Enable(hGoButton, TRUE);
-									Button_Enable(hStopButton, FALSE);
-									gFlagAcquiring = FALSE;
-								}
-							}
-						}
-					return 0;
-				}
-			}
+			processTimers(LOWORD(wParam));
 			return 0;
 		default:
 			return 0;
 	}
 }
+
+
+int processButtons(int ID) {
+
+	switch (ID) {
+		case ID_EMENABLE_BUTTON:
+			{
+				if (Button_GetCheck(hEmEnableButton) == BST_CHECKED) {
+				Edit_SetText(hEmGainEdit, L"1");
+				Edit_Enable(hEmGainEdit, TRUE);
+				}
+				else {
+					Edit_SetText(hEmGainEdit, L"");
+					Edit_Enable(hEmGainEdit, FALSE);
+				}
+			}
+			break;
+
+		case ID_COOLERENABLE_BUTTON:
+			// do something for cooling
+			break;
+		case ID_COOLERDISABLE_BUTTON:
+			// do something for cooling
+			break;
+
+		case ID_GO_BUTTON:
+			{
+				if (!gFlagAcquiring) {
+					int err = 0;
+					err = SetupAcquisition();
+					
+					if (err == 0) {
+						Button_Enable(hStopButton, TRUE);
+						Button_Enable(hGoButton, FALSE);
+					}
+					else
+						return -1;
+					gCounterODSeries = 0;
+				}
+			}
+			break;
+
+		case ID_STOP_BUTTON:
+			{
+				if (gFlagAcquiring) {
+					Button_Enable(hGoButton, TRUE);
+					Button_Enable(hStopButton, FALSE);
+					KillTimer(gHandleMain, ID_ACQ_TIMER);
+
+					gFlagAcquiring = FALSE;
+					gCounterODSeries = 0;
+
+					AndorCamera.AbortAcquisition();
+				}
+			}
+			break;
+	}
+
+	return 0;
+}
+
+
+int processTimers(int ID) {
+	switch (ID) {
+		case ID_ACQ_TIMER:	
+			{
+				BOOL successFlag = FALSE;
+
+				int status;
+				int errorVal = AndorCamera.GetStatus(&status);
+
+				if (errorVal != DRV_SUCCESS) {
+					KillTimer(gHandleMain, ID_ACQ_TIMER);
+					AndorCamera.AbortAcquisition();
+				}
+				else {
+					// If acquiring, just pass until the next timer
+					if (status == DRV_ACQUIRING) {
+						gFlagAcquiring = TRUE;
+						return 0;
+					}
+
+					// Otherwise:
+					else if (status == DRV_IDLE) {
+						KillTimer(gHandleMain, ID_ACQ_TIMER);
+
+						if (gFlagAcquiring) {
+							
+							gCounterODSeries++;
+							getImageData();
+
+							std::wostringstream wss;
+							wss << L"Acquired " << gCounterODSeries << L" of " << KRBCAM_OD_SERIES_LENGTH << L" in series.\n";
+							appendToEditControl(hStatusLogEdit, wss.str().c_str());
+
+							if (gCounterODSeries < KRBCAM_OD_SERIES_LENGTH) {
+								int errorVal = AndorCamera.StartAcquisition();
+								
+								if (errorVal == DRV_SUCCESS) {
+									gFlagAcquiring = TRUE;
+									SetTimer(gHandleMain, ID_ACQ_TIMER, KRBCAM_TIMER, NULL);
+									return 0;
+								}
+							}
+							else {
+								appendToEditControl(hStatusLogEdit, L"Done acquiring.\n");
+								successFlag = TRUE;
+							}
+						}
+						else
+							appendToEditControl(hStatusLogEdit, L"Didn't start acquiring!\n");
+					}
+					else if (status != DRV_ACQUIRING)
+						appendToEditControl(hStatusLogEdit, L"Error: not acquiring.\n");
+				}
+
+				// If not acquiring, the default behavior
+				// is to reset the counter, button states, and acquire flag.
+				// If the camera is in the middle of an acquisition or OD
+				// sequence, then the function will have already returned by this point.
+				gCounterODSeries = 0;
+				Button_Enable(hGoButton, TRUE);
+				Button_Enable(hStopButton, FALSE);
+				gFlagAcquiring = FALSE;
+				return successFlag ? 0 : -1;
+			}
+
+		default:
+			return 0;
+	}
+}
+
 
 
 int saveArray(long* pImage, int data_length, int num_frames, int width, int height) {
@@ -360,12 +360,12 @@ int saveArray(long* pImage, int data_length, int num_frames, int width, int heig
 
 		std::ofstream save_file;
 		std::wostringstream ss;
-		ss << gConfig.folderPath.c_str() << KRbCAM_FILENAME_BASE << gConfig.fileNumber << kinIndex << L".csv";
+		ss << gConfig.folderPath.c_str() << KRBCAM_FILENAME_BASE << gConfig.fileNumber << kinIndex << L".csv";
 
 		if (gCounterODSeries == 1)
-			save_file.open(ss.str().c_str());
+			save_file.open(ss.str().c_str(), std::ofstream::out | std::ofstream::trunc); // Make sure the file is empty
 		else
-			save_file.open(ss.str().c_str(), std::fstream::app);
+			save_file.open(ss.str().c_str(), std::ofstream::app);
 		
 
 		for (int j=0; j < y_limit; j++) {
@@ -379,7 +379,7 @@ int saveArray(long* pImage, int data_length, int num_frames, int width, int heig
 	}
 	delete temp;
 
-	if (gCounterODSeries == KRbCAM_OD_SERIES_LENGTH) {
+	if (gCounterODSeries == KRBCAM_OD_SERIES_LENGTH) {
 		incrementFileNumber(&gConfig);
 		SetConfigFormData(gConfig);
 	}

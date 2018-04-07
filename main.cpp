@@ -5,6 +5,8 @@
 #include <windows.h>
 #include "baseWindow.h"
 
+#define KRBCAM_NAME L"KRbCam: iXon Fast Kinetics Imaging"
+
 
 extern int HandleMessagesControl(UINT uMsg, WPARAM wParam, LPARAM lParam);
 extern int InitializeSDK(void);
@@ -46,7 +48,7 @@ public:
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
     MainWindow win;
 
-    if (!win.Create(L"iXon Kinetics Imaging", WS_OVERLAPPED | WS_MINIMIZEBOX | WS_SYSMENU)) {
+    if (!win.Create(KRBCAM_NAME, WS_OVERLAPPED | WS_MINIMIZEBOX | WS_SYSMENU)) {
         return 0;
     }
 
