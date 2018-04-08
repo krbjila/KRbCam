@@ -76,7 +76,7 @@ public:
 		iXonClass::GetShutterMinTimes(&camInfo.shutterMinT[0], &camInfo.shutterMinT[1]);
 		
 		if (errorFlag) {
-			MessageBox(GetActiveWindow(), errorMsg.c_str(), L"Error.", MB_OK);
+			MessageBox(hMainWindow, errorMsg.c_str(), L"Error.", MB_OK);
 			return -1;
 		}
 
@@ -398,7 +398,7 @@ public:
 	int iXonClass::GetImages(long index1, long index2, long* buffer, long data_length) {
 		long valInd1, valInd2;
 		int errorVal = ::GetImages(index1, index2, buffer, data_length, &valInd1, &valInd2);
-		handleErrors(errorVal, errorMsg, L"GetImages error: ", L"Readout complete!\n", TRUE);
+		handleErrors(errorVal, errorMsg, L"GetImages error: ", L"Readout complete!\n", TRUE, TRUE);
 		return errorVal;
 	}
 
@@ -472,7 +472,7 @@ protected:
 		errorFlag = TRUE;
 
 		if (throwMB)
-			MessageBox(GetActiveWindow(), msg.c_str(), L"Error!", MB_OK);
+			MessageBox(hMainWindow, msg.c_str(), L"Error!", MB_OK);
 		return msg;
 	}		
 
@@ -495,7 +495,7 @@ public:
 		iXonClass::GetEMGainRange(&camInfo.emGainRange[0], &camInfo.emGainRange[1]);
 
 		if (errorFlag) {
-			MessageBox(GetActiveWindow(), errorMsg.c_str(), L"Error.", MB_OK);
+			MessageBox(hMainWindow, errorMsg.c_str(), L"Error.", MB_OK);
 			return -1;
 		}
 		else
@@ -521,7 +521,7 @@ public:
 		iXonClass::GetReadoutTime(&readout);
 
 		if (errorFlag) {
-			MessageBox(GetActiveWindow(), errorMsg.c_str(), L"Error.", MB_OK);
+			MessageBox(hMainWindow, errorMsg.c_str(), L"Error.", MB_OK);
 			return -1;
 		}
 		else

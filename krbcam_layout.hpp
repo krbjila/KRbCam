@@ -556,7 +556,6 @@ BOOL SetDefaultValues(void) {
 
 	Button_SetCheck(hCoolerDisableButton, BST_CHECKED);
 
-//	Button_Enable(hGoButton, FALSE);
 	Button_Enable(hStopButton, FALSE);
 
 	return TRUE;
@@ -685,6 +684,8 @@ void SetConfigFormData(config_form_input_t data) {
 	Edit_SetText(hFileNumberEdit, (LPCWSTR)ss.str().c_str());
 
 }
+
+
 
 
 

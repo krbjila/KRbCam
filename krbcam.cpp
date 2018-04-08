@@ -132,31 +132,6 @@ int SetupAcquisition(void) {
 }
 
 
-int getImageData(void) {
-
-	unsigned long dataLength = KRBCAM_FK_SERIES_LENGTH * gConfig.width * gConfig.height;
-	if (gConfig.binning)
-		dataLength /= 4;
-	
-	if (pImageData != NULL)
-		delete pImageData;
-	pImageData = new long[dataLength];
-
-	AndorCamera.errorFlag = FALSE;
-
-	long ind1 = 0;
-	long ind2 = 0;
-	AndorCamera.GetNumberAvailableImages(&ind1, &ind2);
-	AndorCamera.GetImages(ind1, ind2, pImageData, dataLength);
-
-	if (!AndorCamera.errorFlag) {
-		saveArray(pImageData, dataLength, KRBCAM_FK_SERIES_LENGTH, gConfig.width, gConfig.height);
-		return 0;
-	}
-	else
-		return -1;
-}
-
 int exitGracefully(void) {
 
 	KillTimer(gHandleMain, ID_ACQ_TIMER);
@@ -285,6 +260,8 @@ int processTimers(int ID) {
 							gCounterODSeries++;
 							getImageData();
 
+							Sleep(100);
+
 							std::wostringstream wss;
 							wss << L"Acquired " << gCounterODSeries << L" of " << KRBCAM_OD_SERIES_LENGTH << L" in series.\n";
 							appendToEditControl(hStatusLogEdit, wss.str().c_str());
@@ -327,6 +304,32 @@ int processTimers(int ID) {
 }
 
 
+int getImageData(void) {
+
+	unsigned long dataLength = KRBCAM_FK_SERIES_LENGTH * gConfig.width * gConfig.height;
+	if (gConfig.binning)
+		dataLength /= 4;
+	
+	if (pImageData != NULL)
+		delete pImageData;
+	pImageData = new long[dataLength];
+
+	AndorCamera.errorFlag = FALSE;
+
+	long ind1 = 0;
+	long ind2 = 0;
+	AndorCamera.GetNumberAvailableImages(&ind1, &ind2);
+	AndorCamera.GetImages(ind1, ind2, pImageData, dataLength);
+
+	if (!AndorCamera.errorFlag) {
+		saveArray(pImageData, dataLength, KRBCAM_FK_SERIES_LENGTH, gConfig.width, gConfig.height);
+		return 0;
+	}
+	else
+		return -1;
+}
+
+
 
 int saveArray(long* pImage, int data_length, int num_frames, int width, int height) {
 
@@ -342,7 +345,7 @@ int saveArray(long* pImage, int data_length, int num_frames, int width, int heig
 			appendToEditControl(hStatusLogEdit, ws.c_str());
 		}
 	}
-	
+
 	int frame_length = data_length / num_frames;
 
 	int bins = 1;
@@ -352,32 +355,33 @@ int saveArray(long* pImage, int data_length, int num_frames, int width, int heig
 	int x_limit = width / bins;
 	int y_limit = height / bins;
 
-	long* temp = new long[frame_length];
 	char kinIndex = 'a';
 	for (int i=0; i < num_frames; i++) {
 		
-		memcpy(temp, pImage + i * frame_length, frame_length * sizeof(long));
-
 		std::ofstream save_file;
 		std::wostringstream ss;
 		ss << gConfig.folderPath.c_str() << KRBCAM_FILENAME_BASE << gConfig.fileNumber << kinIndex << L".csv";
 
 		if (gCounterODSeries == 1)
-			save_file.open(ss.str().c_str(), std::ofstream::out | std::ofstream::trunc); // Make sure the file is empty
+			save_file.open(ss.str().c_str(), std::ofstream::trunc); // Make sure the file is empty
 		else
 			save_file.open(ss.str().c_str(), std::ofstream::app);
 		
 
 		for (int j=0; j < y_limit; j++) {
 			for (int k=0; k < x_limit; k++) {
-				save_file << temp[j * x_limit + k] << ",";
+				save_file << pImage[i * frame_length + j*x_limit + k];
+
+				if (k != x_limit - 1)
+					save_file << ",";
 			}
+
 			save_file << "\n";
+
 		}
 		save_file.close();
 		kinIndex++;
 	}
-	delete temp;
 
 	if (gCounterODSeries == KRBCAM_OD_SERIES_LENGTH) {
 		incrementFileNumber(&gConfig);

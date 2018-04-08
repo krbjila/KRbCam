@@ -2,6 +2,6 @@ expTime 1.5
 x_off 0
 y_off 0
 width 500
-height 500
+height 100
 savePath C:\Users\KRbG2\Desktop\Kyle\andor\data\
 binning 1

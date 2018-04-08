@@ -17,7 +17,7 @@
 #define KRBCAM_N_ACC					1 // Number of accumulations: 1
 
 #define KRBCAM_BIN_SIZE					2 // binning is 2x2
-#define KRBCAM_TIMER					100 // ms for acquisition loop
+#define KRBCAM_TIMER					500 // ms for acquisition loop
 
 #define KRBCAM_LOOP_ACQ					FALSE // Loop acquisitions?
 

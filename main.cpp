@@ -5,8 +5,15 @@
 #include <windows.h>
 #include "baseWindow.h"
 
-#define KRBCAM_NAME L"KRbCam: iXon Fast Kinetics Imaging"
+#include "krbcam_paintWindow.hpp"
 
+#define KRBCAM_NAME                 L"KRbCam: iXon Fast Kinetics Imaging"
+#define KRBCAM_NAME_PAINTWINDOW     L"KRbCam: Images"
+
+#define KRBCAM_PAINTWINDOW_WIDTH 400
+#define KRBCAM_PAINTWINDOW_HEIGHT 300
+
+#define ID_PAINTWINDOW 0x20
 
 extern int HandleMessagesControl(UINT uMsg, WPARAM wParam, LPARAM lParam);
 extern int InitializeSDK(void);
@@ -47,10 +54,23 @@ public:
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
     MainWindow win;
+    PaintWindow paintWin;
 
     if (!win.Create(KRBCAM_NAME, WS_OVERLAPPED | WS_MINIMIZEBOX | WS_SYSMENU)) {
         return 0;
     }
+
+    BOOL paintWinCreate = paintWin.Create(KRBCAM_NAME_PAINTWINDOW,
+                                            WS_OVERLAPPEDWINDOW,
+                                            0,
+                                            CW_USEDEFAULT,
+                                            CW_USEDEFAULT,
+                                            KRBCAM_PAINTWINDOW_WIDTH,
+                                            KRBCAM_PAINTWINDOW_HEIGHT
+                                            );
+
+    if (!paintWinCreate)
+        return 0;
 
     _CreateWindows(hInstance, win.Window());
     gHandleMain = win.Window();
@@ -64,6 +84,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     } while (time2 < 2000);
 
     ShowWindow(win.Window(), nCmdShow);
+    ShowWindow(paintWin.Window(), nCmdShow);
 
     MSG msg = { };
     while (GetMessage(&msg, NULL, 0, 0)) {

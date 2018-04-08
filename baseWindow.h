@@ -1,7 +1,7 @@
 #ifndef BASEWINDOW_H
 #define BASEWINDOW_H
 
-#include<windows.h>
+#include <windows.h>
 
 template<class DERIVED_TYPE>
 class BaseWindow
@@ -77,5 +77,7 @@ protected:
 	virtual LRESULT HandleMessage(UINT uMsg, WPARAM wParam, LPARAM lParam) = 0;
 	HWND m_hwnd;
 };
+
+
 
 #endif
